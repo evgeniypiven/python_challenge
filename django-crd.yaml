@@ -24,6 +24,10 @@ spec:
                   type: integer
                   minimum: 1
                   maximum: 65535
+                cpu_threshold:
+                  type: string  # e.g., "200m"
+                memory_threshold:
+                  type: string  # e.g., "512Mi"
   scope: Namespaced
   names:
     plural: applications

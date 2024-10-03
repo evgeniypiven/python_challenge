@@ -16,6 +16,8 @@ def create_application(spec, name, namespace, **kwargs):
         replicas = spec.get('replicas', 1)
         image = spec.get('image')
         port = spec.get('port', 80)
+        cpu_threshold = spec.get('cpu_threshold')
+        memory_threshold = spec.get('memory_threshold')
 
         # Create Deployment
         apps_v1 = client.AppsV1Api()
@@ -52,6 +54,52 @@ def create_application(spec, name, namespace, **kwargs):
         core_v1.create_namespaced_service(namespace=namespace, body=service)
         logger.info(f"Created Service {name} in {namespace}")
 
+        # Create HPA if thresholds are specified
+        if cpu_threshold or memory_threshold:
+            hpa = client.V2beta2HorizontalPodAutoscaler(
+                api_version='autoscaling/v2beta2',
+                kind='HorizontalPodAutoscaler',
+                metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+                spec=client.V2beta2HorizontalPodAutoscalerSpec(
+                    scale_target_ref=client.V2beta2CrossVersionObjectReference(
+                        api_version='apps/v1',
+                        kind='Deployment',
+                        name=name
+                    ),
+                    min_replicas=1,
+                    max_replicas=10,
+                    metrics=[]
+                )
+            )
+
+            if cpu_threshold:
+                hpa.spec.metrics.append(client.V2beta2MetricSpec(
+                    type='Resource',
+                    resource=client.V2beta2ResourceMetricSource(
+                        name='cpu',
+                        target=client.V2beta2MetricTarget(
+                            type='Utilization',
+                            average_utilization=int(cpu_threshold[:-1])  # Remove 'm' and convert to int
+                        )
+                    )
+                ))
+
+            if memory_threshold:
+                hpa.spec.metrics.append(client.V2beta2MetricSpec(
+                    type='Resource',
+                    resource=client.V2beta2ResourceMetricSource(
+                        name='memory',
+                        target=client.V2beta2MetricTarget(
+                            type='Utilization',
+                            average_utilization=int(memory_threshold[:-2])  # Remove 'Mi' and convert to int
+                        )
+                    )
+                ))
+
+            autoscaling_v1 = client.V2beta2HorizontalPodAutoscalerApi()
+            autoscaling_v1.create_namespaced_horizontal_pod_autoscaler(namespace=namespace, body=hpa)
+            logger.info(f"Created HPA {name} in {namespace}")
+
     except Exception as e:
         logger.error(f"Error creating application {name} in {namespace}: {e}")
 
@@ -62,6 +110,8 @@ def update_application(spec, name, namespace, **kwargs):
         replicas = spec.get('replicas')
         image = spec.get('image')
         port = spec.get('port')
+        cpu_threshold = spec.get('cpu_threshold')
+        memory_threshold = spec.get('memory_threshold')
 
         apps_v1 = client.AppsV1Api()
 
@@ -86,6 +136,39 @@ def update_application(spec, name, namespace, **kwargs):
             core_v1.patch_namespaced_service(name, namespace, service)
             logger.info(f"Updated Service {name} in {namespace}")
 
+        # Update HPA
+        autoscaling_v1 = client.V2beta2HorizontalPodAutoscalerApi()
+        hpa = autoscaling_v1.read_namespaced_horizontal_pod_autoscaler(name, namespace)
+
+        # Update HPA metrics
+        metrics = []
+        if cpu_threshold:
+            metrics.append(client.V2beta2MetricSpec(
+                type='Resource',
+                resource=client.V2beta2ResourceMetricSource(
+                    name='cpu',
+                    target=client.V2beta2MetricTarget(
+                        type='Utilization',
+                        average_utilization=int(cpu_threshold[:-1])
+                    )
+                )
+            ))
+        if memory_threshold:
+            metrics.append(client.V2beta2MetricSpec(
+                type='Resource',
+                resource=client.V2beta2ResourceMetricSource(
+                    name='memory',
+                    target=client.V2beta2MetricTarget(
+                        type='Utilization',
+                        average_utilization=int(memory_threshold[:-2])
+                    )
+                )
+            ))
+
+        hpa.spec.metrics = metrics
+        autoscaling_v1.patch_namespaced_horizontal_pod_autoscaler(name, namespace, hpa)
+        logger.info(f"Updated HPA {name} in {namespace}")
+
     except Exception as e:
         logger.error(f"Error updating application {name} in {namespace}: {e}")
 
@@ -95,6 +178,11 @@ def delete_application(name, namespace, **kwargs):
     try:
         apps_v1 = client.AppsV1Api()
         core_v1 = client.CoreV1Api()
+        autoscaling_v1 = client.V2beta2HorizontalPodAutoscalerApi()
+
+        # Delete HPA
+        autoscaling_v1.delete_namespaced_horizontal_pod_autoscaler(name, namespace)
+        logger.info(f"Deleted HPA {name} in {namespace}")
 
         # Delete Deployment
         apps_v1.delete_namespaced_deployment(name=name, namespace=namespace)
