@@ -6,8 +6,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load the Kubernetes configuration
-config.load_incluster_config()  # Use if running inside a pod
-# config.load_kube_config()      # Uncomment for local development
+# config.load_incluster_config()  # Use if running inside a pod
+config.load_kube_config()      # Uncomment for local development
 
 
 @kopf.on.create('mydomain.com', 'v1', 'applications')

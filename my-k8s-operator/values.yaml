@@ -1,0 +1,4 @@
+namespace: default
+image: "pivenevgeniy/my-k8s-operator:latest"
+kubernetesServiceHost: "kubernetes.default.svc"
+kubernetesServicePort: "443"
