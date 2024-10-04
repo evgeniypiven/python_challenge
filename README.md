@@ -92,7 +92,7 @@ When finishes your test, you can stop and remove all containers by command:
 ```bash
 docker-compose down
 ```
-Also, we will clear all configuration files and heml chart:
+Also, we will clear all configuration files and helm chart:
 ```bash
 kubectl delete -f my-k8s-operator/crds/django-crd.yaml
 ```
