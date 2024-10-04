@@ -1,9 +1,20 @@
+"""
+Deployment Operator
+"""
+# Standard library imports.
 import kopf
 import logging
 from kubernetes import client, config
+from prometheus_client import start_http_server, Summary
+
+# Related third party imports.
+
+# Local application/library specific imports.
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+REQUEST_TIME = Summary('request_processing_seconds', 'Time spent processing request')
 
 # Load the Kubernetes configuration
 # config.load_incluster_config()  # Use if running inside a pod
@@ -49,6 +60,7 @@ def create_servicemonitor(name, namespace, port, logger):
         logger.error(f"Failed to create ServiceMonitor: {e}")
 
 
+@REQUEST_TIME.time()
 @kopf.on.create('mydomain.com', 'v1', 'applications')
 def create_application(spec, name, namespace, **kwargs):
     try:
@@ -97,7 +109,7 @@ def create_application(spec, name, namespace, **kwargs):
         # Create HPA if thresholds are specified
         if cpu_threshold or memory_threshold:
             hpa = client.V2HorizontalPodAutoscaler(
-                api_version='autoscaling/v2beta2',
+                api_version='autoscaling/v1',
                 kind='HorizontalPodAutoscaler',
                 metadata=client.V1ObjectMeta(name=name, namespace=namespace),
                 spec=client.V2HorizontalPodAutoscalerSpec(
@@ -255,3 +267,8 @@ def delete_application(name, namespace, **kwargs):
 
     except Exception as e:
         logger.error(f"Error deleting application {name} in {namespace}: {e}")
+
+
+if __name__ == '__main__':
+    start_http_server(8000)  # Start Prometheus metrics server
+    kopf.run()

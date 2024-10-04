@@ -1,0 +1,23 @@
+version: '3.7'
+services:
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - 8000:8000
+    env_file:
+      - .envs/.dev
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:12.3
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=python_challenge_test
+      - POSTGRES_PASSWORD=python_challenge
+      - POSTGRES_DB=python_challenge_db
+volumes:
+  postgres_data:
