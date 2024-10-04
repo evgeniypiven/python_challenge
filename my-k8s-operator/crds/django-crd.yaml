@@ -28,6 +28,8 @@ spec:
                   type: string  # e.g., "200m"
                 memory_threshold:
                   type: string  # e.g., "512Mi"
+                monitoring:
+                  type: boolean
   scope: Namespaced
   names:
     plural: applications

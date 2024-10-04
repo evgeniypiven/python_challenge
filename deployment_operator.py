@@ -10,6 +10,45 @@ logger = logging.getLogger(__name__)
 config.load_kube_config()      # Uncomment for local development
 
 
+def create_servicemonitor(name, namespace, port, logger):
+    sm = {
+        "apiVersion": "monitoring.coreos.com/v1",
+        "kind": "ServiceMonitor",
+        "metadata": {
+            "name": f"{name}-monitor",
+            "namespace": namespace,
+            "labels": {
+                "app": name
+            }
+        },
+        "spec": {
+            "selector": {
+                "matchLabels": {
+                    "app": name
+                }
+            },
+            "endpoints": [
+                {
+                    "port": "http",  # Ensure this matches your service port
+                    "interval": "30s"
+                }
+            ]
+        }
+    }
+    api = client.CustomObjectsApi()
+    try:
+        api.create_namespaced_custom_object(
+            group="monitoring.coreos.com",
+            version="v1",
+            namespace=namespace,
+            plural="servicemonitors",
+            body=sm
+        )
+        logger.info(f"Created ServiceMonitor {name}-monitor in {namespace}.")
+    except Exception as e:
+        logger.error(f"Failed to create ServiceMonitor: {e}")
+
+
 @kopf.on.create('mydomain.com', 'v1', 'applications')
 def create_application(spec, name, namespace, **kwargs):
     try:
@@ -18,6 +57,7 @@ def create_application(spec, name, namespace, **kwargs):
         port = spec.get('port', 80)
         cpu_threshold = spec.get('cpu_threshold')
         memory_threshold = spec.get('memory_threshold')
+        monitoring = spec.get('monitoring')
 
         # Create Deployment
         apps_v1 = client.AppsV1Api()
@@ -100,6 +140,9 @@ def create_application(spec, name, namespace, **kwargs):
             autoscaling_v1.create_namespaced_horizontal_pod_autoscaler(namespace=namespace, body=hpa)
             logger.info(f"Created HPA {name} in {namespace}")
 
+        if monitoring:
+            create_servicemonitor(name, namespace, spec['port'], logger)
+
     except Exception as e:
         logger.error(f"Error creating application {name} in {namespace}: {e}")
 
@@ -173,6 +216,22 @@ def update_application(spec, name, namespace, **kwargs):
         logger.error(f"Error updating application {name} in {namespace}: {e}")
 
 
+def delete_servicemonitor(name, namespace, logger):
+    api = client.CustomObjectsApi()
+    try:
+        api.delete_namespaced_custom_object(
+            group="monitoring.coreos.com",
+            version="v1",
+            namespace=namespace,
+            plural="servicemonitors",
+            name=f"{name}-monitor",
+            body=client.V1DeleteOptions()
+        )
+        logger.info(f"Deleted ServiceMonitor {name}-monitor in {namespace}.")
+    except Exception as e:
+        logger.error(f"Failed to delete ServiceMonitor: {e}")
+
+
 @kopf.on.delete('mydomain.com', 'v1', 'applications')
 def delete_application(name, namespace, **kwargs):
     try:
@@ -191,6 +250,8 @@ def delete_application(name, namespace, **kwargs):
         # Delete Service
         core_v1.delete_namespaced_service(name=name, namespace=namespace)
         logger.info(f"Deleted Service {name} in {namespace}")
+
+        delete_servicemonitor(name, namespace, logger)
 
     except Exception as e:
         logger.error(f"Error deleting application {name} in {namespace}: {e}")
